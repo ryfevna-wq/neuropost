@@ -6,7 +6,7 @@ import os
 import sys
 from datetime import date
 from dotenv import load_dotenv
-import anthropic
+import google.generativeai as genai
 
 load_dotenv()
 
@@ -85,12 +85,13 @@ def build_user_prompt(topic, post_type, platform):
 
 
 def generate_post(topic, post_type, platform, passport):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        print("\n❌ ANTHROPIC_API_KEY не найден в .env файле\n")
+        print("\n❌ GEMINI_API_KEY не найден в .env файле\n")
         sys.exit(1)
 
-    client = anthropic.Anthropic(api_key=api_key)
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
     platforms_to_generate = list(PLATFORM_INSTRUCTIONS.keys()) if platform == "все" else [platform]
     results = {}
@@ -98,13 +99,9 @@ def generate_post(topic, post_type, platform, passport):
     for p in platforms_to_generate:
         print(f"\n⏳ Генерирую пост для {p}...")
         try:
-            message = client.messages.create(
-                model="claude-sonnet-5",
-                max_tokens=2000,
-                system=build_system_prompt(passport),
-                messages=[{"role": "user", "content": build_user_prompt(topic, post_type, p)}],
-            )
-            results[p] = message.content[0].text
+            prompt = build_system_prompt(passport) + "\n\n" + build_user_prompt(topic, post_type, p)
+            response = model.generate_content(prompt)
+            results[p] = response.text
         except Exception as e:
             print(f"\n❌ Ошибка при генерации для {p}: {e}\n")
             results[p] = None

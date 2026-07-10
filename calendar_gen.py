@@ -6,7 +6,7 @@ import os
 import sys
 from datetime import date, timedelta
 from dotenv import load_dotenv
-import anthropic
+import google.generativeai as genai
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -33,21 +33,22 @@ def load_passport():
 
 
 def generate_topics(passport, posts_per_week, weeks=2):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        print("\n❌ ANTHROPIC_API_KEY не найден в .env файле\n")
+        print("\n❌ GEMINI_API_KEY не найден в .env файле\n")
         sys.exit(1)
 
-    client = anthropic.Anthropic(api_key=api_key)
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
     total_posts = posts_per_week * weeks
 
-    system = f"""Ты — контент-стратег. Создай разнообразный контент-план.
+    prompt = f"""Ты — контент-стратег. Создай разнообразный контент-план.
 Ниша эксперта: {passport.get('who_i_am', '')}
 Клиент: {passport.get('target_client', '')}
 Тон: {passport.get('tone', '')}
-Оффер: {passport.get('offer', '')}"""
+Оффер: {passport.get('offer', '')}
 
-    user = f"""Придумай {total_posts} тем для постов на 2 недели.
+Придумай {total_posts} тем для постов на 2 недели.
 Чередуй типы: полезный, история, кейс, анонс, вирусный, личное.
 
 Ответь ТОЛЬКО списком в формате (одна тема на строку):
@@ -62,13 +63,8 @@ def generate_topics(passport, posts_per_week, weeks=2):
     print(f"\n⏳ Генерирую {total_posts} тем для контент-плана...")
 
     try:
-        message = client.messages.create(
-            model="claude-sonnet-5",
-            max_tokens=2000,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
-        return message.content[0].text.strip()
+        response = model.generate_content(prompt)
+        return response.text.strip()
     except Exception as e:
         print(f"\n❌ Ошибка при генерации плана: {e}\n")
         sys.exit(1)

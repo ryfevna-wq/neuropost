@@ -6,7 +6,7 @@ import os
 import sys
 from datetime import date
 from dotenv import load_dotenv
-import anthropic
+import google.generativeai as genai
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -52,16 +52,19 @@ def build_audit_system_prompt(passport):
 
 
 def run_audit(client_name, niche, site_text, audience, passport):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        print("\n❌ ANTHROPIC_API_KEY не найден в .env файле\n")
+        print("\n❌ GEMINI_API_KEY не найден в .env файле\n")
         sys.exit(1)
 
-    ai_client = anthropic.Anthropic(api_key=api_key)
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
     audience_line = f"\nЦелевая аудитория: {audience}" if audience else ""
 
-    user_message = f"""Проведи НейроАудит этого бизнеса:
+    prompt = f"""{build_audit_system_prompt(passport)}
+
+Проведи НейроАудит этого бизнеса:
 
 Имя/название: {client_name}
 Ниша: {niche}{audience_line}
@@ -83,13 +86,8 @@ def run_audit(client_name, niche, site_text, audience, passport):
     print("\n⏳ Анализирую бизнес клиента...")
 
     try:
-        message = ai_client.messages.create(
-            model="claude-sonnet-5",
-            max_tokens=3000,
-            system=build_audit_system_prompt(passport),
-            messages=[{"role": "user", "content": user_message}],
-        )
-        return message.content[0].text
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
         print(f"\n❌ Ошибка при генерации аудита: {e}\n")
         sys.exit(1)
