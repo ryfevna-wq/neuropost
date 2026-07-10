@@ -1,0 +1,7 @@
+.env
+brand_passport.json
+output/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
