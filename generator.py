@@ -1,6 +1,7 @@
 """
 НейроПост v2.0 — Модуль 1: Генератор постов
 """
+import argparse
 import json
 import os
 import sys
@@ -10,81 +11,69 @@ import google.generativeai as genai
 
 load_dotenv()
 
-PASSPORT_FILE = "brand_passport.json"
 OUTPUT_DIR = "output/posts"
 
-POST_TYPES = {
-    "1": "полезный",
-    "2": "история",
-    "3": "кейс",
-    "4": "анонс",
-}
-
-PLATFORMS = {
-    "1": "TG",
-    "2": "VK",
-    "3": "MAX",
-    "4": "все",
-}
+POST_TYPES = {"1": "полезный", "2": "история", "3": "кейс", "4": "анонс"}
+PLATFORMS  = {"1": "TG", "2": "VK", "3": "MAX", "4": "все"}
 
 PLATFORM_INSTRUCTIONS = {
-    "TG": "Формат для Telegram: до 4096 символов, можно эмодзи, без хэштегов в тексте (они в конце опционально), абзацы через пустую строку.",
-    "VK": "Формат для ВКонтакте: до 15000 символов, добавь в конце 5-7 релевантных хэштегов через #, абзацы через пустую строку.",
-    "MAX": "Формат для MAX (бывший Одноклассники): до 8000 символов, дружелюбный тон, эмодзи умеренно, абзацы через пустую строку.",
+    "TG":  "Формат Telegram: до 4096 символов, можно эмодзи, абзацы через пустую строку.",
+    "VK":  "Формат ВКонтакте: до 15000 символов, добавь в конце 5-7 хэштегов через #.",
+    "MAX": "Формат MAX: до 8000 символов, дружелюбный тон, эмодзи умеренно.",
 }
 
 
-def load_passport():
-    if not os.path.exists(PASSPORT_FILE):
-        print("\n❌ Паспорт Бренда не найден. Сначала запусти: python setup.py\n")
+def load_profile(path):
+    if not os.path.exists(path):
+        print(f"\n❌ Профиль не найден: {path}\n")
+        print("Запусти python setup.py чтобы создать профиль.\n")
         sys.exit(1)
-    with open(PASSPORT_FILE, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-def build_system_prompt(passport):
-    phrases = ", ".join(passport.get("my_phrases", []))
-    never_say = ", ".join(passport.get("never_say", []))
-    archetypes = ", ".join(passport.get("archetypes", []))
+def build_system_prompt(profile):
+    phrases   = ", ".join(profile.get("my_phrases", []))
+    never_say = ", ".join(profile.get("never_say", []))
+    archetypes = ", ".join(profile.get("archetypes", []))
+    name = profile.get("name") or "эксперт"
 
-    return f"""Ты — контент-менеджер и копирайтер эксперта со следующим Паспортом Бренда:
+    return f"""Ты — копирайтер эксперта. Пиши посты от первого лица в его голосе.
 
-КТО Я: {passport.get('who_i_am', '')}
-МОЙ КЛИЕНТ: {passport.get('target_client', '')}
-ГЛАВНЫЙ РЕЗУЛЬТАТ: {passport.get('main_result', '')}
-МОЁ ОТЛИЧИЕ: {passport.get('differentiation', '')}
-МОЙ ТОН: {passport.get('tone', '')}
-МОИ ФРАЗЫ (использовать): {phrases}
+Паспорт Бренда:
+ИМЯ/БРЕНД: {name}
+КТО Я: {profile.get('who_i_am', '')}
+МОЙ КЛИЕНТ: {profile.get('target_client', '')}
+РЕЗУЛЬТАТ: {profile.get('main_result', '')}
+ОТЛИЧИЕ: {profile.get('differentiation', '')}
+ТОН: {profile.get('tone', '')}
+МОИ ФРАЗЫ: {phrases}
 НИКОГДА НЕ ГОВОРЮ: {never_say}
-МОЙ ОФФЕР: {passport.get('offer', '')}
-МОИ АРХЕТИПЫ: {archetypes}
+ОФФЕР: {profile.get('offer', '')}
+АРХЕТИПЫ: {archetypes}
 
-Пиши посты от первого лица, в голосе и стиле эксперта.
-Используй характерные фразы. Никогда не используй запрещённые слова и обороты.
-Пиши живо, без канцелярита, как реальный человек."""
+Используй характерные фразы. Никогда не используй запрещённые обороты.
+Пиши живо, без канцелярита."""
 
 
 def build_user_prompt(topic, post_type, platform):
-    platform_instruction = PLATFORM_INSTRUCTIONS.get(platform, PLATFORM_INSTRUCTIONS["TG"])
-
     type_instructions = {
-        "полезный": "Напиши полезный пост: дай конкретную пользу читателю, используй структуру (проблема → суть → 3-5 советов → вывод). Заголовок — цепляющий.",
-        "история": "Напиши пост-историю (сторителлинг): начни с яркого момента, покажи трансформацию, заверши выводом или призывом.",
-        "кейс": "Напиши пост-кейс: ситуация клиента до → что сделали → результат в цифрах или конкретике → вывод для читателя.",
-        "анонс": "Напиши пост-анонс: заинтригуй, объясни ценность, добавь чёткий призыв к действию.",
+        "полезный": "Структура: цепляющий заголовок → проблема → 3-5 советов → вывод → мягкий призыв.",
+        "история":  "Структура: яркое начало → развитие → кульминация → вывод/урок.",
+        "кейс":     "Структура: ситуация ДО → что сделали → результат в цифрах → вывод.",
+        "анонс":    "Структура: интрига → ценность → чёткий призыв к действию.",
     }
-
-    return f"""Тема поста: {topic}
-Тип поста: {post_type}
+    return f"""Тема: {topic}
+Тип: {post_type}
 {type_instructions.get(post_type, '')}
 
-{platform_instruction}
+{PLATFORM_INSTRUCTIONS.get(platform, '')}
 
-После текста поста на отдельной строке напиши:
-ПРОМПТ ДЛЯ ВИЗУАЛА: [короткое описание изображения для нейросети Кандинский/Шедеврум на русском языке]"""
+После текста добавь строку:
+ПРОМПТ ДЛЯ ВИЗУАЛА: [описание картинки для Кандинского/Шедеврума]"""
 
 
-def generate_post(topic, post_type, platform, passport):
+def generate_post(topic, post_type, platform, profile):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         print("\n❌ GEMINI_API_KEY не найден в .env файле\n")
@@ -93,17 +82,17 @@ def generate_post(topic, post_type, platform, passport):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-1.5-flash")
 
-    platforms_to_generate = list(PLATFORM_INSTRUCTIONS.keys()) if platform == "все" else [platform]
+    platforms_list = list(PLATFORM_INSTRUCTIONS.keys()) if platform == "все" else [platform]
     results = {}
 
-    for p in platforms_to_generate:
+    for p in platforms_list:
         print(f"\n⏳ Генерирую пост для {p}...")
         try:
-            prompt = build_system_prompt(passport) + "\n\n" + build_user_prompt(topic, post_type, p)
+            prompt = build_system_prompt(profile) + "\n\n" + build_user_prompt(topic, post_type, p)
             response = model.generate_content(prompt)
             results[p] = response.text
         except Exception as e:
-            print(f"\n❌ Ошибка при генерации для {p}: {e}\n")
+            print(f"\n❌ Ошибка для {p}: {e}\n")
             results[p] = None
 
     return results
@@ -112,29 +101,29 @@ def generate_post(topic, post_type, platform, passport):
 def save_posts(results, topic):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     today = date.today().strftime("%Y-%m-%d")
-    saved_files = []
-
+    saved = []
     for platform, text in results.items():
-        if text is None:
+        if not text:
             continue
-        filename = f"{today}_{platform}.txt"
-        filepath = os.path.join(OUTPUT_DIR, filename)
-
-        full_content = f"Тема: {topic}\nДата: {today}\nПлатформа: {platform}\n\n{'─'*50}\n\n{text}"
+        filepath = os.path.join(OUTPUT_DIR, f"{today}_{platform}.txt")
+        content = f"Тема: {topic}\nДата: {today}\nПлатформа: {platform}\n\n{'─'*50}\n\n{text}"
         with open(filepath, "w", encoding="utf-8") as f:
-            f.write(full_content)
-
-        saved_files.append(filepath)
-
-    return saved_files
+            f.write(content)
+        saved.append(filepath)
+    return saved
 
 
 def main():
-    print("\n" + "─" * 50)
-    print("   НейроПост v2.0 — Генератор постов")
-    print("─" * 50)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--profile", default="profiles/owner.json")
+    args = parser.parse_args()
 
-    passport = load_passport()
+    profile = load_profile(args.profile)
+    brand_name = profile.get("name") or "мой бренд"
+
+    print("\n" + "─" * 50)
+    print(f"   Генератор постов  |  {brand_name}")
+    print("─" * 50)
 
     topic = input("\nТема поста: ").strip()
     if not topic:
@@ -144,28 +133,22 @@ def main():
     print("\nТип поста:")
     for k, v in POST_TYPES.items():
         print(f"  {k}. {v}")
-    type_choice = input("Выбери (1-4): ").strip()
-    post_type = POST_TYPES.get(type_choice, "полезный")
+    post_type = POST_TYPES.get(input("Выбери (1-4): ").strip(), "полезный")
 
     print("\nПлатформа:")
     for k, v in PLATFORMS.items():
         print(f"  {k}. {v}")
-    platform_choice = input("Выбери (1-4): ").strip()
-    platform = PLATFORMS.get(platform_choice, "TG")
+    platform = PLATFORMS.get(input("Выбери (1-4): ").strip(), "TG")
 
-    results = generate_post(topic, post_type, platform, passport)
-
+    results = generate_post(topic, post_type, platform, profile)
     saved = save_posts(results, topic)
 
     print("\n" + "─" * 50)
-    for platform_name, text in results.items():
+    for p, text in results.items():
         if text:
-            print(f"\n✅ Пост для {platform_name}:\n")
-            print(text)
-            print()
-
+            print(f"\n✅ Пост для {p}:\n\n{text}\n")
     print("─" * 50)
-    print("💾 Сохранено в файлы:")
+    print("💾 Сохранено:")
     for f in saved:
         print(f"   {f}")
     print()

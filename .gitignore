@@ -1,5 +1,6 @@
 .env
 brand_passport.json
+profiles/
 output/
 __pycache__/
 *.pyc
